@@ -297,6 +297,67 @@ def log():
     return jsonify({"entries": entries}), 200
 
 
+@app.route("/appeal", methods=["POST"])
+def appeal():
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Request body must be JSON."}), 400
+
+    content_id = data.get("content_id", "").strip()
+    creator_reasoning = data.get("creator_reasoning", "").strip()
+
+    if not content_id:
+        return jsonify({"error": "Field 'content_id' is required."}), 400
+    if not creator_reasoning:
+        return jsonify({"error": "Field 'creator_reasoning' is required."}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    c.execute("""
+        SELECT * FROM audit_log
+        WHERE content_id = ? AND event_type = 'attribution_decision'
+        LIMIT 1
+    """, (content_id,))
+    original = c.fetchone()
+
+    if not original:
+        conn.close()
+        return jsonify({"error": "No submission found with that content_id."}), 404
+
+    c.execute("""
+        UPDATE audit_log SET status = 'under_review'
+        WHERE content_id = ? AND event_type = 'attribution_decision'
+    """, (content_id,))
+
+    appeal_id = str(uuid.uuid4())
+    c.execute("""
+        INSERT INTO audit_log
+            (event_type, content_id, creator_id, timestamp,
+             appeal_id, reason, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        "appeal",
+        content_id,
+        original["creator_id"],
+        datetime.now(timezone.utc).isoformat(),
+        appeal_id,
+        creator_reasoning,
+        "under_review"
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "appeal_id": appeal_id,
+        "content_id": content_id,
+        "status": "under_review",
+        "message": "Appeal received. Your submission has been marked for review."
+    }), 200
+
+
 if __name__ == "__main__":
     init_db()
     app.run(debug=True)
