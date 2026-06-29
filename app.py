@@ -5,7 +5,7 @@ import json
 import math
 import sqlite3
 from datetime import datetime, timezone
-
+from flask_cors import CORS
 from flask import Flask, request, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-
+CORS(app)
 limiter = Limiter(
     get_remote_address,
     app=app,
